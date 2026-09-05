@@ -3,20 +3,26 @@
 from __future__ import annotations
 
 import time
+from collections import deque
 from threading import Lock
 
 from .models import PriceUpdate
+
+# Ring buffer size per ticker: ~300 points ≈ 2.5 minutes at 500ms ticks.
+HISTORY_MAXLEN = 300
 
 
 class PriceCache:
     """Thread-safe in-memory cache of the latest price for each ticker.
 
     Writers: SimulatorDataSource or MassiveDataSource (one at a time).
-    Readers: SSE streaming endpoint, portfolio valuation, trade execution.
+    Readers: SSE streaming endpoint, portfolio valuation, trade execution,
+    the /api/history endpoint.
     """
 
     def __init__(self) -> None:
         self._prices: dict[str, PriceUpdate] = {}
+        self._history: dict[str, deque[dict[str, float]]] = {}
         self._lock = Lock()
         self._version: int = 0  # Monotonically increasing; bumped on every update
 
@@ -25,6 +31,7 @@ class PriceCache:
 
         Automatically computes direction and change from the previous price.
         If this is the first update for the ticker, previous_price == price (direction='flat').
+        Also appends the point to the ticker's bounded history ring buffer.
         """
         with self._lock:
             ts = timestamp or time.time()
@@ -38,8 +45,25 @@ class PriceCache:
                 timestamp=ts,
             )
             self._prices[ticker] = update
+            self._history.setdefault(ticker, deque(maxlen=HISTORY_MAXLEN)).append(
+                {"price": update.price, "timestamp": update.timestamp}
+            )
             self._version += 1
             return update
+
+    def get_history(self, ticker: str, limit: int | None = None) -> list[dict[str, float]]:
+        """Recent price points for a ticker, oldest-first.
+
+        Returns an empty list if the ticker has no recorded points yet.
+        `limit` caps the number of most-recent points returned; it is
+        naturally capped at the ring buffer size (HISTORY_MAXLEN).
+        """
+        with self._lock:
+            buffer = self._history.get(ticker)
+            points = list(buffer) if buffer else []
+        if limit is not None:
+            points = points[-limit:]
+        return points
 
     def get(self, ticker: str) -> PriceUpdate | None:
         """Get the latest price for a single ticker, or None if unknown."""
@@ -60,6 +84,7 @@ class PriceCache:
         """Remove a ticker from the cache (e.g., when removed from watchlist)."""
         with self._lock:
             self._prices.pop(ticker, None)
+            self._history.pop(ticker, None)
 
     @property
     def version(self) -> int:

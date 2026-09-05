@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Request
@@ -52,16 +53,21 @@ async def _generate_events(
     price_cache: PriceCache,
     request: Request,
     interval: float = 0.5,
+    keepalive_interval: float = 15.0,
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields SSE-formatted price events.
 
-    Sends all prices every `interval` seconds. Stops when the client
-    disconnects (detected via request.is_disconnected()).
+    Sends all prices every `interval` seconds (only when something changed).
+    Sends a `: keepalive` comment every `keepalive_interval` seconds when the
+    stream has been quiet, so the client can distinguish "connected but
+    idle" from a stalled connection. Stops when the client disconnects
+    (detected via request.is_disconnected()).
     """
     # Tell the client to retry after 1 second if the connection drops
     yield "retry: 1000\n\n"
 
     last_version = -1
+    last_sent = time.monotonic()
     client_ip = request.client.host if request.client else "unknown"
     logger.info("SSE client connected: %s", client_ip)
 
@@ -81,6 +87,10 @@ async def _generate_events(
                     data = {ticker: update.to_dict() for ticker, update in prices.items()}
                     payload = json.dumps(data)
                     yield f"data: {payload}\n\n"
+                    last_sent = time.monotonic()
+            elif time.monotonic() - last_sent >= keepalive_interval:
+                yield ": keepalive\n\n"
+                last_sent = time.monotonic()
 
             await asyncio.sleep(interval)
     except asyncio.CancelledError:
