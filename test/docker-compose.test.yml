@@ -1,0 +1,47 @@
+# E2E stack: the production image (mock LLM, fresh DB) + a Playwright container running the suite against it.
+#
+#   docker compose -f test/docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from playwright
+#   docker compose -f test/docker-compose.test.yml down -v
+#
+# Keeps browser dependencies out of the production image. No API keys needed (LLM_MOCK=true, simulator prices).
+
+name: finally-e2e
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      LLM_MOCK: "true"
+      MASSIVE_API_KEY: ""          # force the built-in simulator
+      OPENROUTER_API_KEY: "unused-in-mock-mode"
+      DB_PATH: /app/db/finally.db
+    tmpfs:
+      - /app/db                    # brand-new, empty database on every `up`
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4).status == 200 else 1)"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+  playwright:
+    # Keep the tag in lockstep with "@playwright/test" in test/package.json.
+    image: mcr.microsoft.com/playwright:v1.63.0-noble
+    working_dir: /work
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      BASE_URL: http://web:8000
+      FRESH_DB: "1"
+      CI: "1"
+    volumes:
+      - ./:/work
+      - node_modules:/work/node_modules   # container-side install; do not clobber host node_modules
+    command: ["sh", "-c", "npm ci && npx playwright test"]
+    ipc: host                              # recommended by Playwright for Chromium in Docker
+
+volumes:
+  node_modules:

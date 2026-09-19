@@ -1,0 +1,19 @@
+{
+  "name": "finally-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Playwright E2E suite for the FinAlly trading workstation",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report",
+    "typecheck": "tsc --noEmit",
+    "install:browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.0"
+  }
+}
