@@ -24,7 +24,8 @@ from app.market import PriceCache, PriceUpdate, MarketDataSource, create_market_
   - `get(ticker) -> PriceUpdate | None`
   - `get_price(ticker) -> float | None`
   - `get_all() -> dict[str, PriceUpdate]`
-  - `remove(ticker)`
+  - `get_history(ticker, limit=None) -> list[dict]` — oldest-first `{"price", "timestamp"}` points from the bounded ring buffer (`HISTORY_MAXLEN` = 300 per ticker, ~2.5 min at 500ms ticks)
+  - `remove(ticker)` — also clears that ticker's history buffer
   - `version` property — monotonic counter, increments on every update (for SSE change detection)
 
 - **`MarketDataSource`** — Abstract interface implemented by `SimulatorDataSource` and `MassiveDataSource`. Lifecycle: `start(tickers)` -> `add_ticker()` / `remove_ticker()` -> `stop()`.
@@ -39,6 +40,23 @@ from app.market import create_stream_router
 router = create_stream_router(price_cache)  # Returns FastAPI APIRouter
 # Endpoint: GET /api/stream/prices (text/event-stream)
 ```
+
+Pushes a batched snapshot only when a price changed, and a `: keepalive`
+comment every ~15s during quiet periods so the client can tell "connected but
+idle" from "stalled".
+
+### Price History
+
+```python
+from app.market import create_history_router
+
+router = create_history_router(price_cache, source.get_tickers)  # Returns FastAPI APIRouter
+# Endpoint: GET /api/history?ticker=SYM&limit=N
+```
+
+`get_tracked_tickers` (usually the running `MarketDataSource.get_tickers`) is
+used to tell an unknown ticker (`404`) apart from a tracked-but-not-yet-warmed
+one (`200` with `points: []`).
 
 ### Seed Data
 
