@@ -55,3 +55,11 @@ class MarketDataSource(ABC):
     @abstractmethod
     def get_tickers(self) -> list[str]:
         """Return the current list of actively tracked tickers."""
+
+    def is_running(self) -> bool:
+        """True while the background producer task is alive (used by /api/health).
+
+        Default implementation inspects the `_task` attribute both built-in sources use.
+        """
+        task = getattr(self, "_task", None)
+        return task is not None and not task.done()

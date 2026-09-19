@@ -8,8 +8,6 @@ from fastapi import APIRouter, HTTPException, Query
 
 from .cache import HISTORY_MAXLEN, PriceCache
 
-router = APIRouter(prefix="/api", tags=["market-data"])
-
 
 def create_history_router(
     price_cache: PriceCache,
@@ -21,6 +19,7 @@ def create_history_router(
     to distinguish an unknown ticker (404) from a tracked-but-not-yet-warmed
     one (200 with an empty points list).
     """
+    router = APIRouter(prefix="/api", tags=["market-data"])
 
     @router.get("/history")
     async def get_history(

@@ -1,0 +1,34 @@
+# Secrets and runtime data
+.env
+.env.*
+!.env.example
+db/*.db
+db/*.db-*
+
+# VCS / tooling / agent config
+.git
+.github
+.claude
+.claude-plugin
+independent-reviewer
+
+# Docs and tests are not needed in the image
+/README.md
+/CLAUDE.md
+planning
+test
+backend/tests
+backend/market_data_demo.py
+
+# Dependency and build artifacts (rebuilt inside the image)
+**/node_modules
+frontend/.next
+frontend/out
+backend/static
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+**/.coverage
+**/htmlcov
